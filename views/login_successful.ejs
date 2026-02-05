@@ -1,13 +1,20 @@
 <!DOCTYPE html>
 <html>
+  <head>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
   <body>
-    <h1>Login Successful!</h1>
-    <p>First Name: <%= firstName %></p>
-    <p>Last Name: <%= lastName %></p>
-    <p>Organization ID: <%= organization %></p>
-    <p>Organization Name: <%= organizationName %></p>
-    <!-- Full profile is not rendered for cleanliness but remains commented for potential debugging/bonus features -->
-    <!-- <pre><%= JSON.stringify(profile, null, 2) %></pre> -->
-    <a href="/logout">Logout</a>
+    <div class="container">
+      <h1>Login Successful</h1>
+      <p><strong>First Name:</strong> <%= firstName %></p>
+      <p><strong>Last Name:</strong> <%= lastName %></p>
+      <p><strong>Organization ID:</strong> <%= organization %></p>
+      <p><strong>Organization Name:</strong> <%= organizationName %></p>
+
+      <!-- Full profile intentionally omitted for clarity -->
+      <!-- <pre><%= JSON.stringify(profile, null, 2) %></pre> -->
+
+      <a href="/logout">Logout</a>
+    </div>
   </body>
 </html>
