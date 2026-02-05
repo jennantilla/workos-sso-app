@@ -3,8 +3,13 @@ dotenv.config();
 
 import express from "express";
 import session from "express-session";
+import { WorkOS } from "@workos-inc/node";
 
 const app = express();
+
+// WorkOS
+const workos = new WorkOS(process.env.WORKOS_API_KEY);
+const clientId = process.env.WORKOS_CLIENT_ID;
 
 app.set("view engine", "ejs");
 app.set("views", "./views");
