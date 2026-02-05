@@ -2,6 +2,12 @@
 <html>
   <body>
     <h1>Login Successful!</h1>
-    <!-- Todo -->
+    <p>First Name: <%= firstName %></p>
+    <p>Last Name: <%= lastName %></p>
+    <p>Organization ID: <%= organization %></p>
+    <p>Organization Name: <%= organizationName %></p>
+    <!-- Full profile is not rendered for cleanliness but remains commented for potential debugging/bonus features -->
+    <!-- <pre><%= JSON.stringify(profile, null, 2) %></pre> -->
+    <a href="/logout">Logout</a>
   </body>
 </html>
