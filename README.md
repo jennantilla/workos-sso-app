@@ -67,3 +67,5 @@ node index.js
   - Organization ID
   - Organization Name 🎉
 6. Logout to test again
+
+![sso_test](https://github.com/user-attachments/assets/27b16b84-9247-4fe0-bb3f-7627a9bf09d3)
