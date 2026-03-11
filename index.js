@@ -4,15 +4,27 @@ dotenv.config();
 import express from "express";
 import session from "express-session";
 import { WorkOS } from "@workos-inc/node";
+import cookieParser from "cookie-parser";
 
 const app = express();
 
 // WorkOS
-const workos = new WorkOS(process.env.WORKOS_API_KEY);
-const clientId = process.env.WORKOS_CLIENT_ID;
+const workos = new WorkOS(process.env.WORKOS_API_KEY, {
+    clientId: process.env.WORKOS_CLIENT_ID,
+});
 
 app.set("view engine", "ejs");
 app.set("views", "./views");
+
+app.use(cookieParser());
+
+// OPTIONAL Define localhost cookie options
+const cookieOptions = {
+    path: '/',
+    httpOnly: true,
+    secure: false, // localhost only
+    sameSite: 'lax',
+};
 
 app.use(express.static("public"));
 app.use(express.urlencoded({ extended: true }));
@@ -25,81 +37,134 @@ app.use(
     })
 );
 
-// Home
-app.get("/", (req, res) => {
-    if (req.session.isLoggedIn) {
-        res.render("login_successful", {
-            profile: req.session.profile,
-            firstName: req.session.firstName,
-            lastName: req.session.lastName,
-            organization: req.session.organizationId,
-            organizationName: req.session.organizationName,
+// AuthKit Home
+app.get('/', async (req, res) => {
+    let user = null;
+
+    try {
+        const session = workos.userManagement.loadSealedSession({
+            sessionData: req.cookies['wos-session'],
+            cookiePassword: process.env.WORKOS_COOKIE_PASSWORD,
         });
-    } else {
-        res.render("index");
+
+        const authResult = await session.authenticate();
+        if (authResult.authenticated) {
+            user = authResult.user;
+        }
+    } catch (e) {
+        // Not authenticated
     }
+
+    res.render('authkit_index', { user });
 });
 
-// Test SSO with Test Identity Provider
 app.get('/auth', (_req, res) => {
-    const organization = 'org_test_idp'; // Test SSO org
-
-    const redirectUri = 'http://localhost:8000/callback'; // callback for SSO
-
-    const authorizationUrl = workos.sso.getAuthorizationUrl({
-        organization,
-        redirectUri,
-        clientId,
+    const authorizationUrl = workos.userManagement.getAuthorizationUrl({
+        provider: 'authkit',
+        redirectUri: 'http://localhost:8000/callback',
+        clientId: process.env.WORKOS_CLIENT_ID,
     });
 
     res.redirect(authorizationUrl);
 });
 
-app.get("/callback", async (req, res) => {
+// Auth middleware function
+async function withAuth(req, res, next) {
+    const session = workos.userManagement.loadSealedSession({
+        sessionData: req.cookies['wos-session'],
+        cookiePassword: process.env.WORKOS_COOKIE_PASSWORD,
+    });
+
+    const { authenticated, reason } = await session.authenticate();
+
+    if (authenticated) {
+        return next();
+    }
+
+    // If the cookie is missing, redirect to login
+    if (!authenticated && reason === 'no_session_cookie_provided') {
+        return res.redirect('/auth');
+    }
+
+    // If the session is invalid, attempt to refresh
     try {
-        const { code, error } = req.query;
-        if (error) {
-            return res.send(`Redirect callback error: ${error}`);
+        const { authenticated, sealedSession } = await session.refresh();
+
+        if (!authenticated) {
+            return res.redirect('/auth');
         }
 
-        const profile = await workos.sso.getProfileAndToken({
-            code,
-            clientId,
-        });
+        // update the cookie
+        res.cookie('wos-session', sealedSession, cookieOptions);
 
-        // Organization validation omitted for Test Provider flow
-        // In production, compare against a known organization ID
+        // Redirect to the same route to ensure the updated cookie is used
+        return res.redirect(req.originalUrl);
+    } catch (e) {
+        // Failed to refresh access token, redirect user to login page
+        // after deleting the cookie
+        res.clearCookie('wos-session');
+        res.redirect('/auth');
+    }
+}
 
-        // if (profile.organizationId !== expectedOrganizationId) {
-        //     return res.status(401).send({ message: 'Unauthorized' });
-        // }
+app.get("/callback", async (req, res) => {
+    // The authorization code returned by AuthKit
+    const code = req.query.code;
 
-        req.session.firstName = profile.profile.firstName;
-        req.session.lastName = profile.profile.lastName;
-        req.session.organizationId = profile.profile.organizationId;
-        req.session.profile = profile;
-        req.session.isLoggedIn = true;
+    if (!code) {
+        return res.status(400).send('No code provided');
+    }
 
-        const org = await workos.organizations.getOrganization(
-            profile.profile.organizationId
-        );
-        req.session.organizationName = org.name;
+    try {
+        const authenticateResponse =
+            await workos.userManagement.authenticateWithCode({
+                clientId: process.env.WORKOS_CLIENT_ID,
+                code,
+                session: {
+                    sealSession: true,
+                    cookiePassword: process.env.WORKOS_COOKIE_PASSWORD,
+                },
+            });
 
-        // Save session before redirect to ensure isLoggedIn persists
-        req.session.save((err) => {
-            if (err) console.error(err);
-            res.redirect("/");
-        });
-    } catch (err) {
-        res.send("Error exchanging code for profile: " + err);
+        const { user, sealedSession } = authenticateResponse;
+
+        // Store the session in a cookie
+        res.cookie('wos-session', sealedSession, cookieOptions);
+
+        // Use the information in `user` for further business logic.
+
+        // Redirect the user to the dashboard
+        return res.redirect('/dashboard');
+    } catch (error) {
+        return res.redirect('/auth');
     }
 });
 
-// Logout
-app.get("/logout", (req, res) => {
-    req.session.destroy(() => {
-        res.redirect("/");
+// Specify the `withAuth` middleware function we defined earlier to protect this route
+app.get('/dashboard', withAuth, async (req, res) => {
+    const session = workos.userManagement.loadSealedSession({
+        sessionData: req.cookies['wos-session'],
+        cookiePassword: process.env.WORKOS_COOKIE_PASSWORD,
     });
+
+    const { user } = await session.authenticate();
+
+    console.log(`User ${user.firstName} is logged in`);
+
+    res.render('dashboard', { user });
+});
+
+// Logout
+app.get("/logout", async (req, res) => {
+    const session = workos.userManagement.loadSealedSession({
+        sessionData: req.cookies['wos-session'],
+        cookiePassword: process.env.WORKOS_COOKIE_PASSWORD,
+    });
+
+    const url = await session.getLogoutUrl();
+
+    res.clearCookie('wos-session', cookieOptions);
+    res.redirect(url);
 });
 
 const PORT = 8000;

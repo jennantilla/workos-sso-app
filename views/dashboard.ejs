@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Dashboard</title>
+  </head>
+  <body>
+    <h1>Dashboard</h1>
+
+    <p>Welcome, <strong><%= user.email %></strong></p>
+
+    <% if (user.firstName) { %>
+      <p>Name: <%= user.firstName %> <%= user.lastName || '' %></p>
+    <% } %>
+
+    <a href="/logout">Log out</a>
+  </body>
+</html>
